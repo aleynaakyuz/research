@@ -8,11 +8,12 @@ from pycbc.filter import sigma
 from tqdm import tqdm
 
 parser = argparse.ArgumentParser(description="Path to injection files")
-parser.add_argument("path", help="The string argument you want to pass")
+parser.add_argument("path", help="Simulated population")
 parser.add_argument("det", nargs=2, help="detector names")
 parser.add_argument("low_freq_cutoff", help="low_freq_cutoff")
 parser.add_argument("df", help="delta_f")
 parser.add_argument("psd_path", nargs=2, help="paths of the psd")
+parser.add_argument("out_path", help="Output path")
 
 
 args = parser.parse_args()
@@ -21,6 +22,7 @@ det = args.det
 psd_path = args.psd_path
 low_freq = float(args.low_freq_cutoff)
 df = float(args.df)
+out_path = args.out_path
 
 data = h5py.File(input_path, 'r')
 
@@ -64,17 +66,18 @@ data_dic = {key: data[dataset_key][:] for key, dataset_key in parameters.items()
 temp_data = [{key: value[i] for key, value in data_dic.items()} for i in range(lenn)]
 final_data = [{**temp_data[i], **parameters2} for i in range(lenn)]
 
-hf = h5py.File('data_bbh_tqdm.h5', 'w')
+hf = h5py.File(out_path, 'w')
 for j in range(len(det)):
     net_snr_l = np.zeros(lenn)
-    for k in tqdm(range(lenn)):
-        for i in range(lenn):
-            hp, hc = get_fd_waveform(**final_data[i])
-            
-            ra = final_data[i]['ra']
-            dec = final_data[i]['dec']
-            pol = final_data[i]['polarization']
-            snr = calculate_snr(det[j], psd_path[j], ra, dec, pol, hp, hc)
-            net_snr_l[i] = snr
-    hf.create_dataset('network_snr' + str(det[j]), data=np.array(net_snr_l))
+    for i in tqdm(range(lenn)):
+        hp, hc = get_fd_waveform(**final_data[i])
+        if len(hp) > 2000:
+            hp = hp[:2000]
+            hc = hc[:2000]
+        ra = final_data[i]['ra']
+        dec = final_data[i]['dec']
+        pol = final_data[i]['polarization']
+        snr = calculate_snr(det[j], psd_path[j], ra, dec, pol, hp, hc)
+        net_snr_l[i] = snr
+    hf.create_dataset(str(det[j]), data=net_snr_l)
 hf.close()
