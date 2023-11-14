@@ -11,7 +11,7 @@ parser = argparse.ArgumentParser(description="Path to injection files")
 parser.add_argument("path", help="Simulated population")
 parser.add_argument("det", nargs=2, help="detector names")
 parser.add_argument("low_freq_cutoff", help="low_freq_cutoff")
-parser.add_argument("df", help="delta_f")
+parser.add_argument("df_max", help="maximum delta_f")
 parser.add_argument("psd_path", nargs=2, help="paths of the psd")
 parser.add_argument("out_path", help="Output path")
 
@@ -21,12 +21,12 @@ input_path = args.path
 det = args.det
 psd_path = args.psd_path
 low_freq = float(args.low_freq_cutoff)
-df = float(args.df)
+df_max = float(args.df_max)
 out_path = args.out_path
 
 data = h5py.File(input_path, 'r')
 
-def calculate_snr(det, path, ra, dec, pol, hp, hc):
+def calculate_snr(df, det, path, ra, dec, pol, hp, hc):
     detec = Detector(det)
     f_plus, f_cross = detec.antenna_pattern(ra, dec, pol, t_gps=1697205750)
     proj_strain = f_plus*hp + f_cross*hc  
@@ -35,6 +35,32 @@ def calculate_snr(det, path, ra, dec, pol, hp, hc):
     amp = sigma(proj_strain, psd=psd, low_frequency_cutoff=low_freq)
 
     return amp    
+
+def check_length(hp, hc, df):
+    if len(hp) * df > 4000:
+        inx = int(4000//df)
+        hp = hp[:inx]
+        hc = hc[:inx]
+    return hp, hc
+
+def opt_df(final_data, ra, dec, pol, det, path, snr_list):
+    df = final_data['delta_f']
+    hp, hc = get_fd_waveform(**final_data)
+    hp, hc = check_length(hp, hc, df) 
+    snr_l = calculate_snr(df, det, path, ra, dec, pol, hp, hc) 
+    final_data.update({"delta_f": df/2})
+    while df > 0.1:
+        hp_s, hc_s = get_fd_waveform(**final_data)
+        hp_s, hc_s = check_length(hp_s, hc_s, df) 
+        snr_s = calculate_snr(df/2, det, path, ra, dec, pol, hp_s, hc_s)
+        if abs(snr_l - snr_s) < 0.01:
+            snr_list.append(snr_s)
+            break
+        else:
+            df = df/2
+            snr_l = snr_s
+            final_data.update({"delta_f": df/2})
+            continue
 
 
 lenn = len(data['mass1'][:])
@@ -58,7 +84,7 @@ parameters = {
 
 parameters2 = {
     "approximant": "IMRPhenomXPHM",
-    "delta_f": df,
+    "delta_f": df_max,
     "f_lower": low_freq
 }
 
@@ -68,16 +94,12 @@ final_data = [{**temp_data[i], **parameters2} for i in range(lenn)]
 
 hf = h5py.File(out_path, 'w')
 for j in range(len(det)):
-    net_snr_l = np.zeros(lenn)
+    snr_list = []
     for i in tqdm(range(lenn)):
-        hp, hc = get_fd_waveform(**final_data[i])
-        if len(hp) > 2000:
-            hp = hp[:2000]
-            hc = hc[:2000]
-        ra = final_data[i]['ra']
-        dec = final_data[i]['dec']
-        pol = final_data[i]['polarization']
-        snr = calculate_snr(det[j], psd_path[j], ra, dec, pol, hp, hc)
-        net_snr_l[i] = snr
-    hf.create_dataset(str(det[j]), data=net_snr_l)
+        ra = final_data[i]['ra'] 
+        dec = final_data[i]['dec'] 
+        pol = final_data[i]['polarization'] 
+        opt_df(final_data[i], ra, dec, pol, det[j], psd_path[j], snr_list)
+
+    hf.create_dataset(str(det[j]), data=snr_list)
 hf.close()
