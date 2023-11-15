@@ -49,7 +49,9 @@ def opt_df(final_data, ra, dec, pol, det, path, snr_list):
     hp, hc = check_length(hp, hc, df/2) 
     snr_l = calculate_snr(df, det, path, ra, dec, pol, hp, hc) 
     final_data.update({"delta_f": df/2})
-    while df > 0.1:
+
+    min_df = 0.1
+    while df > min_df:
         hp_s, hc_s = get_fd_waveform(**final_data)
         hp_s, hc_s = check_length(hp_s, hc_s, df) 
         snr_s = calculate_snr(df/2, det, path, ra, dec, pol, hp_s, hc_s)
