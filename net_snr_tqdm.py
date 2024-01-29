@@ -81,22 +81,8 @@ def opt_df(final_data, ra, dec, pol, det, psd):
 
 lenn = len(data['mass1'][:])
 
-parameters = {
-    "mass1": "mass1",
-    "mass2": "mass2",
-    "spin1x": "spin1x",
-    "spin1y": "spin1y",
-    "spin1z": "spin1z",
-    "spin2x": "spin2x",
-    "spin2y": "spin2y",
-    "spin2z": "spin2z",
-    "coa_phase": "coa_phase",
-    "inclination": "inclination",
-    "distance": "distance",
-    "ra": "ra",
-    "dec": "dec",
-    "polarization": "polarization"
-}
+temp_params = list(data.keys())
+parameters = {key: key for key in temp_params}
 
 parameters2 = {
     "approximant": "IMRPhenomXPHM",
@@ -107,6 +93,7 @@ parameters2 = {
 data_dic = {key: data[dataset_key][:] for key, dataset_key in parameters.items()}
 temp_data = [{key: value[i] for key, value in data_dic.items()} for i in range(lenn)]
 final_data = [{**temp_data[i], **parameters2} for i in range(lenn)]
+
 
 hf = h5py.File(out_path, 'w')
 for j in range(len(det)):
